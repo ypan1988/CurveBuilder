@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "CurveBuilder"
+version = "0.0.1"
+description = "Construct interest-rate curve object from dates and data"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE.txt"}
+keywords = ["quantlib", "interest rate curve", "bootstrap"]
+
+authors = [
+  {name = "Yi Pan", email = "ypan1988@gmail.com" }
+]
+
+maintainers = [
+  {name = "Yi Pan", email = "ypan1988@gmail.com" }
+]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Topic :: Scientific/Engineering",
+  "License :: OSI Approved :: BSD License",
+]
+
+dependencies = [
+  "QuantLib"
+]
+
+[project.optional-dependencies]
+dev = ["check-manifest"]
+test = ["coverage"]
+
+[project.urls]
+"Homepage" = "https://github.com/ypan1988/CurveBuilder"
+"Bug Reports" = "https://github.com/ypan1988/CurveBuilder/issues"
+
+# The following would provide a command line executable called `sample`
+# which executes the function `main` from this package when invoked.
+[project.scripts]
+sample = "sample:main"
+
+
+# This is configuration specific to the `setuptools` build backend.
+# If you are using a different build backend, you will need to change this.
+[tool.setuptools]
+# If there are data files included in your packages that need to be
+# installed, specify them here.
+package-data = {"sample" = ["*.dat"]}

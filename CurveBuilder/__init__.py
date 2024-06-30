@@ -1,0 +1,1 @@
+from .ir_data_curve import IRDataCurve
