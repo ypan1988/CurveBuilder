@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 import QuantLib as ql
+from .rate_settings import rate_settings_ibor
 
 def to_datetime(arg):
   return datetime(day=arg.dayOfMonth(), month=arg.month(), year=arg.year())
@@ -19,35 +20,85 @@ def get_overnight_index(index_name, yts):
 
 class IRDataCurve:
 
-  def __init__(self, valuation_date, tenors, rates, instruments, index_name, interpolation = 0, settlement_day = 2):
+  def __init__(self,
+               valuation_date: ql.Date,
+               tenors, 
+               rates,
+               instruments,
+               index_name,
+               rate_in_perc = False,
+               is_IBOR = False,
+               interpolation = 0,
+               calendar = ql.TARGET(),
+               day_count = ql.Actual360(),
+               # parameters for Overnight rate index
+               settlement_day = 2,
+               # parameters for IBOR rate index
+               fixed_frequency = ql.Annual,
+               fixed_convention = ql.ModifiedFollowing,
+               fixed_day_count = ql.Thirty360(ql.Thirty360.BondBasis),
+               debug = True):
+    assert len(tenors) == len(rates) == len(instruments), "tenors / rates / instruments doesn't have the same length"
+
+    # Set the evaluation date 
     ql.Settings.instance().evaluationDate = valuation_date
 
+    # Set the curve information
+    self.n_nodes = len(tenors)
     self.valuation_date = valuation_date
     self.tenors = tenors.copy()
     self.rates = rates.copy()
-    
-    print("tenors = ", tenors)
-    print("rates = ", rates)
-    
+    self.instruments = instruments.copy()
+
+    # Convert rates from percent to decimal
+    if rate_in_perc:
+      self.rates = [r / 100 for r in self.rates]
+
+    # Generate curve helpers
     self.yts = ql.RelinkableYieldTermStructureHandle()
-    self.index = get_overnight_index(index_name, self.yts)
 
-    helpers = [ ql.OISRateHelper(settlement_day, tenor, ql.QuoteHandle(ql.SimpleQuote(rate/100)), self.index)
-               for tenor, rate in zip(tenors, rates)]
+    if is_IBOR:
+      index_para = rate_settings_ibor[index_name]
+      self.index = ql.IborIndex(*index_para, self.yts)
+      helpers = self.init_ibor_helpers(calendar, fixed_frequency, fixed_convention, fixed_day_count)
+    else:
+      self.index = get_overnight_index(index_name, self.yts)
+      helpers = [ ql.OISRateHelper(settlement_day, tenor, ql.QuoteHandle(ql.SimpleQuote(rate)), self.index)
+                  for tenor, rate in zip(self.tenors, self.rates)]
 
-    if (interpolation == 0):
-      self.curve = ql.PiecewiseLinearZero(0, ql.TARGET(), helpers, ql.Actual365Fixed())
+    if (interpolation == 0):  
+      self.curve = ql.PiecewiseLinearZero(0, calendar, helpers, day_count)
     elif (interpolation == 2):
       # C++: PiecewiseYieldCurve<ForwardRate, BackwardFlat>
-      self.curve = ql.PiecewiseFlatForward(0, ql.TARGET(), helpers, ql.Actual360())
+      self.curve = ql.PiecewiseFlatForward(0, calendar, helpers, day_count)
 
+    # Link the built curve to the relinkable yield term structure handle 
+    # and build a swap pricing engine
     self.yts.linkTo(self.curve)
     self.engine = ql.DiscountingSwapEngine(self.yts)
 
-    #self.curve.enableExtrapolation()
+    # Enable extrapolation
+    self.curve.enableExtrapolation()
 
-    print("IRDataCurve created")
+    # Print debug information
+    if debug:
+      print("tenors = ", self.tenors)
+      print("rates = ", self.rates)
+      print("IRDataCurve Created...")
 
+  def init_ibor_helpers(self, calendar, fixed_frequency, fixed_convention, fixed_day_count):
+    helpers = ql.RateHelperVector()
+    for tenor, rate, instrument in zip(self.tenors, self.rates, self.instruments):
+      if instrument == "DEPOSIT":
+        helpers.append(ql.DepositRateHelper(rate, self.index))
+      if instrument == "FRA":
+        months_to_start = tenor.length()
+        helpers.append(ql.FraRateHelper(rate, months_to_start, self.index))
+      if instrument == "SWAP":
+        helpers.append(ql.SwapRateHelper(rate, tenor, calendar, fixed_frequency,
+                                         fixed_convention, fixed_day_count, self.index))
+    return helpers
+    
   def get_curve_df(self, settlement_day = 2, day_counter = ql.Actual365Fixed(), compounding = ql.Continuous):
 
     end_dates = []
@@ -90,16 +141,3 @@ class IRDataCurve:
       rates = self.get_discounting_factors(dates)
     plt.plot([to_datetime(d) for d in dates], rates)
     plt.show()
-
-    """
-    helpers = ql.RateHelperVector()
-    for tenor, rate, instrument in zip(Tenors, Rates, Instruments):
-      rate /= 100
-      if instrument == "DEPOSIT":
-        helpers.append(ql.DepositRateHelper(rate, index))
-      if instrument == "FRA":
-        monthsToStart = ql.Period(tenor).length()
-        helpers.append(ql.FraRateHelper(rate, monthsToStart, index))
-      if instrument == "SWAP":
-        helpers.append(ql.SwapRateHelper(rate,ql.Period(tenor), ql.TARGET(), ql.Annual, ql.Following, ql.Thirty360(), index))
-    """
