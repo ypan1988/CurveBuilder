@@ -124,3 +124,6 @@ irdc = cb.IRDataCurve(ql_date,
                       debug = True)
 irdc.get_zero_rates(ql.Date(11,7,2023))
 irdc.get_zero_rates(ql.Date(11,1,2024))
+
+irdc.get_discounting_factors(ql.Date(11,7,2023))
+irdc.get_discounting_factors(ql.Date(11,1,2024))
