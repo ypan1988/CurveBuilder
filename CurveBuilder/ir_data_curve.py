@@ -12,6 +12,7 @@ def to_datetime(arg):
 
 def get_overnight_index(index_name, yts):
   index_dict = {
+    "EONIA": ql.Eonia(yts),
     "ESTR": ql.Estr(yts),
     "SOFR": ql.Sofr(yts),
     "SONIA": ql.Sonia(yts)
@@ -102,23 +103,29 @@ class IRDataCurve:
   def get_curve_df(self, settlement_day = 2, day_counter = ql.Actual365Fixed(), compounding = ql.Continuous):
 
     end_dates = []
+    fair_rates = []
+    pvs       = []
     zeros     = []
     dfs       = []
     for tenor, rate in zip(self.tenors, self.rates):
       ois_swap = ql.MakeOIS(tenor, self.index, rate/100, settlementDays=settlement_day)
-      #pv = ois_swap.NPV() 
-      #fair_rate = ois_swap.fairRate()
+      pv = ois_swap.NPV()
+      fair_rate = ois_swap.fairRate()
       end_date = ois_swap.maturityDate()
       discount_factor = self.curve.discount(end_date)
       zero_rate = self.curve.zeroRate(end_date, day_counter, compounding).rate()
       #zero_rate = -math.log(discount_factor) * 365.0/(maturity_date-self.valuation_date)
       
       end_dates.append(ois_swap.maturityDate().ISO())
+      fair_rates.append(fair_rate)
+      pvs.append(pv)
       zeros.append(zero_rate*100)
       dfs.append(discount_factor)
 
     df = pd.DataFrame({"End Date": end_dates,
                        "Market Rate": self.rates,
+                       "Fair Rate": fair_rates,
+                       "PV": pvs,
                        "Zero Rate": zeros,
                        "Discount": dfs} )
     return df
