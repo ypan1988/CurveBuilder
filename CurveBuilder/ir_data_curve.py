@@ -23,7 +23,7 @@ class IRDataCurve:
 
   def __init__(self,
                valuation_date: ql.Date,
-               tenors, 
+               tenors,
                rates,
                instruments,
                index_name,
@@ -41,7 +41,7 @@ class IRDataCurve:
                debug = True):
     assert len(tenors) == len(rates) == len(instruments), "tenors / rates / instruments doesn't have the same length"
 
-    # Set the evaluation date 
+    # Set the evaluation date
     ql.Settings.instance().evaluationDate = valuation_date
 
     # Set the curve information
@@ -64,16 +64,22 @@ class IRDataCurve:
       helpers = self.init_ibor_helpers(calendar, fixed_frequency, fixed_convention, fixed_day_count)
     else:
       self.index = get_overnight_index(index_name, self.yts)
-      helpers = [ ql.OISRateHelper(settlement_day, tenor, ql.QuoteHandle(ql.SimpleQuote(rate)), self.index)
-                  for tenor, rate in zip(self.tenors, self.rates)]
+      helpers = self.init_on_helpers(settlement_day)
 
-    if (interpolation == 0):  
-      self.curve = ql.PiecewiseLinearZero(0, calendar, helpers, day_count)
+    params = [0, calendar, helpers, day_count]
+    if (interpolation == 0):
+      self.curve = ql.PiecewiseLinearZero(*params)
+    elif (interpolation == 1):
+      self.curve = ql.PiecewiseCubicZero(*params)
     elif (interpolation == 2):
+      self.curve = ql.PiecewiseLogLinearDiscount(*params)
+    elif (interpolation == 3):
+      self.curve = ql.PiecewiseLogCubicDiscount(*params)
+    elif (interpolation == 4):
       # C++: PiecewiseYieldCurve<ForwardRate, BackwardFlat>
       self.curve = ql.PiecewiseFlatForward(0, calendar, helpers, day_count)
 
-    # Link the built curve to the relinkable yield term structure handle 
+    # Link the built curve to the relinkable yield term structure handle
     # and build a swap pricing engine
     self.yts.linkTo(self.curve)
     self.engine = ql.DiscountingSwapEngine(self.yts)
@@ -99,8 +105,25 @@ class IRDataCurve:
         helpers.append(ql.SwapRateHelper(rate, tenor, calendar, fixed_frequency,
                                          fixed_convention, fixed_day_count, self.index))
     return helpers
-    
-  def get_curve_df(self, settlement_day = 2, day_counter = ql.Actual365Fixed(), compounding = ql.Continuous):
+
+  def init_on_helpers(self, settlement_day = 2):
+    helpers = ql.RateHelperVector()
+    for tenor, rate, instrument in zip(self.tenors, self.rates, self.instruments):
+      if instrument == "DEPOSIT":
+        helpers.append(ql.DepositRateHelper(rate, self.index))
+      if instrument == "OIS":
+        helpers.append(ql.OISRateHelper(settlement_day, tenor, ql.QuoteHandle(ql.SimpleQuote(rate)), self.index))
+    return helpers
+
+  def get_curve_df(self,
+                   settlement_day = 2,
+                   day_counter = ql.Actual365Fixed(),
+                   compounding = ql.Continuous,
+                   rate_in_perc = True):
+    if rate_in_perc:
+      factor = 100
+    else:
+      factor = 1
 
     end_dates = []
     fair_rates = []
@@ -108,22 +131,24 @@ class IRDataCurve:
     zeros     = []
     dfs       = []
     for tenor, rate in zip(self.tenors, self.rates):
-      ois_swap = ql.MakeOIS(tenor, self.index, rate/100, settlementDays=settlement_day)
+      ois_swap = ql.MakeOIS(tenor, self.index, 0.01, settlementDays=settlement_day)
       pv = ois_swap.NPV()
       fair_rate = ois_swap.fairRate()
       end_date = ois_swap.maturityDate()
       discount_factor = self.curve.discount(end_date)
       zero_rate = self.curve.zeroRate(end_date, day_counter, compounding).rate()
       #zero_rate = -math.log(discount_factor) * 365.0/(maturity_date-self.valuation_date)
-      
+
       end_dates.append(ois_swap.maturityDate().ISO())
-      fair_rates.append(fair_rate)
+      fair_rates.append(fair_rate*factor)
       pvs.append(pv)
-      zeros.append(zero_rate*100)
+      zeros.append(zero_rate*factor)
       dfs.append(discount_factor)
 
+    market_rates = [r*factor for r in self.rates]
+
     df = pd.DataFrame({"End Date": end_dates,
-                       "Market Rate": self.rates,
+                       "Market Rate": market_rates,
                        "Fair Rate": fair_rates,
                        "PV": pvs,
                        "Zero Rate": zeros,
@@ -133,7 +158,7 @@ class IRDataCurve:
   def get_zero_rates(self, dates, day_counter = ql.Actual365Fixed(), compounding = ql.Continuous):
     if type(dates) is not list: dates = [dates]
     return [self.curve.zeroRate(date, day_counter, compounding).rate() for date in dates]
-  
+
   def get_discounting_factors(self, dates):
     if type(dates) is not list: dates = [dates]
     return [self.curve.discount(date) for date in dates]

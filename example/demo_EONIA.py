@@ -24,7 +24,7 @@ for tenor, rate in zip(tenors,rates):
         helpers.append( ql.DepositRateHelper(rate / 100, eonia ) )
     else:
         helpers.append( ql.OISRateHelper(2, ql.Period(tenor), ql.QuoteHandle(ql.SimpleQuote(rate/100)), eonia) )
-eonia_curve = ql.PiecewiseLogCubicDiscount(0, ql.TARGET(), helpers, ql.Actual365Fixed()) 
+eonia_curve = ql.PiecewiseLogCubicDiscount(0, ql.TARGET(), helpers, ql.Actual365Fixed())
 discount_curve = ql.YieldTermStructureHandle(eonia_curve)
 swapEngine = ql.DiscountingSwapEngine(discount_curve)
 
@@ -42,14 +42,15 @@ for tenor, rate in zip(tenors, rates):
 import CurveBuilder as cb
 ql_date = ql.Date(22, 9, 2020)
 ql_tenors = [ql.Period(t) for t in tenors]
-instruments = ["OIS"] * len(ql_tenors)
+instruments = ["Deposit"] + ["OIS"] * (len(ql_tenors)-1)
 irdc = cb.IRDataCurve(ql_date,
                       ql_tenors,
                       rates,
                       instruments,
                       "EONIA",
                       rate_in_perc = True,
-                      is_IBOR = False, 
+                      is_IBOR = False,
+                      interpolation = 3,
                       calendar = ql.TARGET(),
                       day_count = ql.Actual365Fixed(),
                       debug = True)
