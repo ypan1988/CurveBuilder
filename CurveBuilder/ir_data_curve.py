@@ -125,23 +125,24 @@ class IRDataCurve:
     else:
       factor = 1
 
-    end_dates = []
+    end_dates  = []
     fair_rates = []
-    pvs       = []
-    zeros     = []
-    dfs       = []
-    for tenor, rate in zip(self.tenors, self.rates):
+    pvs        = []
+    zeros      = []
+    dfs        = []
+    for tenor in self.tenors:
       ois_swap = ql.MakeOIS(tenor, self.index, 0.01, settlementDays=settlement_day)
-      pv = ois_swap.NPV()
-      fair_rate = ois_swap.fairRate()
-      end_date = ois_swap.maturityDate()
-      discount_factor = self.curve.discount(end_date)
-      zero_rate = self.curve.zeroRate(end_date, day_counter, compounding).rate()
-      #zero_rate = -math.log(discount_factor) * 365.0/(maturity_date-self.valuation_date)
 
-      end_dates.append(ois_swap.maturityDate().ISO())
+      end_date  = ois_swap.maturityDate()
+      fair_rate = ois_swap.fairRate()
+      pv        = ois_swap.NPV()
+      end_dates.append(end_date.ISO())
       fair_rates.append(fair_rate*factor)
       pvs.append(pv)
+
+      zero_rate = self.curve.zeroRate(end_date, day_counter, compounding).rate()
+      #zero_rate = -math.log(discount_factor) * 365.0/(maturity_date-self.valuation_date)
+      discount_factor = self.curve.discount(end_date)
       zeros.append(zero_rate*factor)
       dfs.append(discount_factor)
 
